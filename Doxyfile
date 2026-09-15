@@ -1,0 +1,24 @@
+# Run `make docs` (needs doxygen). Output goes to docs/html/index.html.
+
+PROJECT_NAME           = typescreen
+PROJECT_BRIEF          = "A typewriter solution for e-ink screens"
+OUTPUT_DIRECTORY       = docs
+INPUT                  = README.md MANUAL.md LICENSE.md FONT_LICENSE.md src
+FILE_PATTERNS          = *.h *.c *.md
+USE_MDFILE_AS_MAINPAGE = README.md
+RECURSIVE              = NO
+
+OPTIMIZE_OUTPUT_FOR_C  = YES
+EXTRACT_ALL            = YES
+EXTRACT_STATIC         = YES
+JAVADOC_AUTOBRIEF      = YES
+TYPEDEF_HIDES_STRUCT   = YES
+SHOW_INCLUDE_FILES     = NO
+SOURCE_BROWSER         = YES
+STRIP_CODE_COMMENTS    = NO
+
+GENERATE_HTML          = YES
+GENERATE_LATEX         = NO
+HAVE_DOT               = NO
+QUIET                  = YES
+WARN_IF_UNDOCUMENTED   = NO

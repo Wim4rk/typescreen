@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>typescreen glyph generator</title>
+    <style>
+        body { font-family: sans-serif; max-width: 640px; margin: 40px auto; padding: 20px; line-height: 1.6; background: #f9f9f9; color: #333; }
+        .container { background: white; padding: 30px; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); }
+        label { display: block; margin-top: 15px; font-weight: bold; }
+        input, select { width: 100%; padding: 8px; margin-top: 5px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; font-family: inherit; }
+        .row { display: flex; gap: 10px; }
+        .col { flex: 1; }
+        button { background: #28a745; color: white; border: none; padding: 12px 20px; margin-top: 25px; cursor: pointer; width: 100%; font-size: 16px; border-radius: 4px; font-weight: bold; }
+        button:hover { background: #218838; }
+        .preview-box { margin-top: 25px; padding: 15px; background: #f0f0f0; border-radius: 6px; border: 1px dashed #bbb; text-align: center; }
+        .preview-title { font-weight: bold; margin-bottom: 10px; display: block; }
+        canvas { border: 1px solid #ff0000; background: #fff; margin: 0 6px; image-rendering: pixelated; }
+        .note { font-size: 0.85em; color: #666; margin-top: 5px; }
+        code { background: #eee; padding: 1px 4px; border-radius: 3px; }
+        #status { margin-top: 10px; font-size: 0.9em; color: #444; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>typescreen glyph generator</h2>
+    <p>Renders a range of Unicode codepoints with an installed font into a
+    fixed-size bitmap table, using the browser's own text renderer. Every
+    glyph is the same width and height — this is for a monospace typewriter,
+    not a typesetter.</p>
+
+    <label for="fontName">Font family:</label>
+    <input type="text" id="fontName" list="fontSuggestions" value="monospace" oninput="updatePreview()">
+    <datalist id="fontSuggestions">
+        <option value="Special Elite">
+        <option value="Courier Prime">
+        <option value="Liberation Mono">
+        <option value="DejaVu Sans Mono">
+        <option value="monospace">
+    </datalist>
+    <div class="note">Any font installed on this computer. The suggestions are
+    all freely licensed. A generated table is a derivative of the font it was
+    rendered from — only redistribute tables made from fonts whose licence
+    allows it.</div>
+
+    <div class="row">
+        <div class="col">
+            <label for="boxW">Cell width (px):</label>
+            <input type="number" id="boxW" value="24" oninput="updatePreview()">
+        </div>
+        <div class="col">
+            <label for="boxH">Cell height (px):</label>
+            <input type="number" id="boxH" value="43" oninput="updatePreview()">
+        </div>
+    </div>
+    <div class="note">The grid cell. Every glyph is drawn into a box of exactly
+    this size; the page is laid out in cells of this size.</div>
+
+    <label for="fontSize">Font size (px):</label>
+    <input type="number" id="fontSize" value="36" oninput="updatePreview()">
+
+    <div class="row">
+        <div class="col">
+            <label for="xOffset">X offset:</label>
+            <input type="number" id="xOffset" value="0" oninput="updatePreview()">
+        </div>
+        <div class="col">
+            <label for="yOffset">Y offset (baseline):</label>
+            <input type="number" id="yOffset" value="34" oninput="updatePreview()">
+        </div>
+    </div>
+    <div class="note">Adjust against the preview until the widest, tallest and
+    deepest glyphs all fit inside the red box. There is no formula for this;
+    it depends on the font. Only leave as much whitespace as you must.</div>
+
+    <label for="ranges">Codepoint ranges:</label>
+    <input type="text" id="ranges" value="0x20-0x7E, 0xA0-0xFF, 0x100-0x17F" oninput="updateCount()">
+    <div class="note">Hex or decimal, single values or ranges, comma-separated.
+    The default is printable ASCII, Latin-1 Supplement (Western European:
+    é ñ ü ß å ø ç …) and Latin Extended-A (œ Œ ÿ plus Central European:
+    ł ś ž č ő ğ …). The standalone accents used as dead keys — ´ ` ¨ ^ ~ —
+    are all inside these ranges. A glyph the font lacks is drawn with the
+    browser's fallback font; check the preview if in doubt.</div>
+    <div id="status"></div>
+
+    <label for="format">Output format:</label>
+    <select id="format">
+        <option value="bin">Binary table (.bin) — loaded at runtime, font is a config value</option>
+        <option value="c">C source (.c) — compiled into the binary</option>
+    </select>
+
+    <div class="preview-box">
+        <span class="preview-title">Preview</span>
+        <div id="canvasContainer">
+            <canvas id="previewCanvas1"></canvas>
+            <canvas id="previewCanvas2"></canvas>
+            <canvas id="previewCanvas3"></canvas>
+            <canvas id="previewCanvas4"></canvas>
+            <canvas id="previewCanvas5"></canvas>
+        </div>
+        <small style="color: #666; display: block; margin-top: 10px;">W (widest), Å (tallest), g (lowest), é (accent), œ (Extended-A)</small>
+    </div>
+
+    <button onclick="generateFont()">Generate</button>
+</div>
+
+<script>
+    // Parses "0x20-0x7E, 0xA0-0xFF, 169" into a sorted list of codepoints.
+    // Duplicates are dropped so the output table is strictly ascending,
+    // which is what the binary search on the device relies on.
+    function parseRanges(text) {
+        const points = new Set();
+        for (const part of text.split(',')) {
+            const piece = part.trim();
+            if (!piece) continue;
+            const m = piece.match(/^(0x[0-9a-f]+|\d+)\s*(?:-\s*(0x[0-9a-f]+|\d+))?$/i);
+            if (!m) continue;
+            const lo = parseInt(m[1]);
+            const hi = m[2] !== undefined ? parseInt(m[2]) : lo;
+            for (let cp = lo; cp <= hi; cp++) points.add(cp);
+        }
+        return Array.from(points).sort((a, b) => a - b);
+    }
+
+    function settings() {
+        return {
+            fontName: document.getElementById('fontName').value,
+            fontSize: parseInt(document.getElementById('fontSize').value, 10),
+            xOffset:  parseInt(document.getElementById('xOffset').value, 10),
+            yOffset:  parseInt(document.getElementById('yOffset').value, 10),
+            w:        parseInt(document.getElementById('boxW').value, 10),
+            h:        parseInt(document.getElementById('boxH').value, 10),
+        };
+    }
+
+    function drawGlyph(ctx, s, charStr) {
+        ctx.fillStyle = "#FFFFFF";
+        ctx.fillRect(0, 0, s.w, s.h);
+        ctx.fillStyle = "#000000";
+        ctx.font = `${s.fontSize}px "${s.fontName}", monospace`;
+        ctx.fillText(charStr, s.xOffset, s.yOffset);
+    }
+
+    function drawPreview(canvasId, charStr) {
+        const s = settings();
+        const canvas = document.getElementById(canvasId);
+        canvas.width = s.w;
+        canvas.height = s.h;
+        drawGlyph(canvas.getContext('2d'), s, charStr);
+    }
+
+    function updatePreview() {
+        drawPreview('previewCanvas1', 'W');
+        drawPreview('previewCanvas2', 'Å');
+        drawPreview('previewCanvas3', 'g');
+        drawPreview('previewCanvas4', 'é');
+        drawPreview('previewCanvas5', 'œ');
+    }
+
+    function updateCount() {
+        const n = parseRanges(document.getElementById('ranges').value).length;
+        const s = settings();
+        const kb = Math.round((16 + n * (4 + s.w * s.h)) / 1024);
+        document.getElementById('status').textContent =
+            `${n} glyphs, about ${kb} kB as a binary table.`;
+    }
+
+    // Pixel convention: 0x00 is black, 0xF0 is white. That is the 8-bit-per-
+    // pixel form the IT8951 controller takes directly, so the device can copy
+    // glyphs straight into its frame buffer without converting.
+    function rasterize(ctx, s, charStr) {
+        drawGlyph(ctx, s, charStr);
+        const img = ctx.getImageData(0, 0, s.w, s.h).data;
+        const out = new Uint8Array(s.w * s.h);
+        for (let i = 0; i < s.w * s.h; i++) {
+            const brightness = (img[i * 4] + img[i * 4 + 1] + img[i * 4 + 2]) / 3;
+            out[i] = (brightness < 200) ? 0x00 : 0xF0;
+        }
+        return out;
+    }
+
+    function download(blob, filename) {
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = filename;
+        link.click();
+        URL.revokeObjectURL(link.href);
+    }
+
+    function generateFont() {
+        const s = settings();
+        const codepoints = parseRanges(document.getElementById('ranges').value);
+        const format = document.getElementById('format').value;
+        if (codepoints.length === 0) { alert("No codepoints to render."); return; }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = s.w;
+        canvas.height = s.h;
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+
+        const bitmapSize = s.w * s.h;
+
+        if (format === 'bin') {
+            // Binary table layout (all integers little-endian):
+            //
+            //   offset  size  field
+            //   0       4     magic "TSGL"
+            //   4       2     format version, currently 1
+            //   6       2     cell width in pixels
+            //   8       2     cell height in pixels
+            //   10      2     reserved, 0
+            //   12      4     glyph count
+            //   16      ...   glyphs, each: u32 codepoint, then width*height bytes
+            //
+            // Glyphs are in ascending codepoint order, so the device can
+            // binary-search them.
+            const headerSize = 16;
+            const buf = new ArrayBuffer(headerSize + codepoints.length * (4 + bitmapSize));
+            const view = new DataView(buf);
+            const bytes = new Uint8Array(buf);
+
+            bytes.set([0x54, 0x53, 0x47, 0x4C], 0);   // "TSGL"
+            view.setUint16(4, 1, true);
+            view.setUint16(6, s.w, true);
+            view.setUint16(8, s.h, true);
+            view.setUint16(10, 0, true);
+            view.setUint32(12, codepoints.length, true);
+
+            let pos = headerSize;
+            for (const cp of codepoints) {
+                view.setUint32(pos, cp, true);
+                pos += 4;
+                bytes.set(rasterize(ctx, s, String.fromCodePoint(cp)), pos);
+                pos += bitmapSize;
+            }
+
+            download(new Blob([buf], { type: "application/octet-stream" }),
+                     `glyphs_${s.w}x${s.h}.bin`);
+            return;
+        }
+
+        // C source: the same table as a compiled-in array.
+        let c = `// Generated by tools/glyphs.html\n`;
+        c += `// Font: ${s.fontName}, ${s.fontSize}px, cell ${s.w}x${s.h}, offset ${s.xOffset},${s.yOffset}\n`;
+        c += `// Pixels: 0x00 black, 0xF0 white (IT8951 8bpp)\n\n`;
+        c += `#include <stdint.h>\n\n`;
+        c += `#define GLYPH_W ${s.w}\n#define GLYPH_H ${s.h}\n#define GLYPH_COUNT ${codepoints.length}\n\n`;
+        c += `typedef struct {\n    uint32_t codepoint;\n    uint8_t  bitmap[GLYPH_W * GLYPH_H];\n} glyph_t;\n\n`;
+        c += `// Ascending by codepoint, for binary search.\nconst glyph_t glyphs[GLYPH_COUNT] = {\n`;
+
+        for (const cp of codepoints) {
+            const ch = String.fromCodePoint(cp);
+            const bm = rasterize(ctx, s, ch);
+            const shown = (cp === 0x20) ? "space" : (cp === 0x5C ? "backslash" : ch);
+            c += `    { 0x${cp.toString(16).toUpperCase().padStart(4, '0')}, { // ${shown}\n        `;
+            for (let i = 0; i < bm.length; i++) {
+                c += "0x" + bm[i].toString(16).toUpperCase().padStart(2, '0');
+                if (i !== bm.length - 1) c += ((i + 1) % 12 === 0) ? ",\n        " : ", ";
+            }
+            c += "\n    } },\n";
+        }
+        c += "};\n";
+
+        download(new Blob([c], { type: "text/plain;charset=utf-8" }),
+                 `glyphs_${s.w}x${s.h}.c`);
+    }
+
+    window.onload = function () { updatePreview(); updateCount(); };
+</script>
+
+</body>
+</html>

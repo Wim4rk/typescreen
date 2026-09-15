@@ -1,0 +1,10 @@
+*.o
+typescreen
+typescreen.txt
+typescreen.txt.tmp
+tests/test
+tests/doc.txt
+tests/dir/
+tests/c.conf
+docs/
+.claude/
