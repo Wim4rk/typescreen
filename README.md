@@ -41,7 +41,7 @@ and `layout` to your keyboard. Everything else is in [MANUAL.md](MANUAL.md).
 display.h       the panel: a frame buffer and a way to refresh part of it
   it8951.c      ... implemented for the IT8951 controller
   hal.c         ... over bcm2835 or lgpio, chosen at build time
-font.c          a glyph table: codepoint → bitmap, pre-rendered AND
+font.c          a glyph table: codepoint -> bitmap, pre-rendered AND
                 pre-rotated at load time, in the controller's pixel format
 canvas.c        a page in the USER's orientation, mapped to panel
                 coordinates. Partial updates for typing, full refresh
@@ -50,7 +50,7 @@ page.c          a grid of codepoints with word wrap and scrolling
 doc.c           everything typed, saved as UTF-8
 typewriter.c    keystrokes in, cells out: batching, dead keys, backspace
 keyboard.c      evdev keyboard with a loadable layout file
-compose.c       accent + letter → accented letter
+compose.c       accent + letter -> accented letter
 files.c         the documents directory
 config.c        the configuration file
 main.c          the reference frontend: event loop, keys, the F3 screen
@@ -94,8 +94,8 @@ document tool downstream can turn them into typography.
 is open when the machine starts; F3 lists the others and lets you start a
 new one. That is the whole file system.
 
-Everything that makes a full editor — cursor movement, editing in the
-middle, version control, statistics — is deliberately out of scope.
+Everything that makes a full editor — editing in the middle, version
+control, statistics — is deliberately out of scope.
 
 ## License
 
